@@ -10,6 +10,7 @@ using System.Windows.Forms;
 using System.Net;
 using Newtonsoft.Json;
 using System.Collections.Specialized;
+using System.IO;
 
 namespace TelegramBot
 {
@@ -19,6 +20,7 @@ namespace TelegramBot
         private string baseUrl = "https://api.telegram.org/bot";
         WebClient client;
         private long LastUpdateID=0;
+        private string fileLog = "BotLog.log";
         public MainForm()
         {
             InitializeComponent();
@@ -57,24 +59,36 @@ namespace TelegramBot
             {
                 return;
             }
-            foreach(MessageResult message in nMessages.result)
+            foreach(MessageResult result in nMessages.result)
             {
-                LastUpdateID = message.update_id;
-                SendAnswer(message.message.chat.id,message.message.text);
+                LastUpdateID = result.update_id;
+                WriteLog(result.message.from.first_name + "(" + result.message.from.id + "): " + result.message.text);
+                SendAnswer(result.message.chat.id,result.message.text);
 
             }
         }
         private void SendAnswer(long chatID,string message)
         {
             string answer="";
-            switch (message)
+            switch (message.ToLower())
             {
+                case "/help": answer = @"Welcome to the bot helper. 
+All supported commands are listed below:
+/start - getting started with a bot
+/help  - list of available commands";
+                        break;
                 case "/start": answer = "I'm your spy bot, you know what i can do? /help";
                     break;
                 default: answer = "You write to me: '"+message+"', but i dont know what to answer";
                     break;
             }
             SendMessage( chatID,answer);
+        }
+        private void WriteLog(string text)
+        {
+            text = DateTime.Now + " " + Environment.NewLine;
+            textBoxLog.Text += text;
+            File.AppendAllText(fileLog,text);
         }
     }
 }
