@@ -11,6 +11,7 @@ using System.Net;
 using Newtonsoft.Json;
 using System.Collections.Specialized;
 using System.IO;
+using System.Drawing.Imaging;
 
 namespace TelegramBot
 {
@@ -181,12 +182,101 @@ All supported commands are listed below:
             }
                 
         }
+        private void HttpUploadScreen(string url, string file, string paramName, string contentType, NameValueCollection nvc)
+        {
+            //generating a POST request
+            string boundary = "-------------------------" + DateTime.Now.Ticks.ToString("x");
+            byte[] boundaryBytes = Encoding.ASCII.GetBytes("\r\n--" + boundary + "\r\n");
+            HttpWebRequest webRequest = (HttpWebRequest)WebRequest.Create(url);
+            webRequest.ContentType = "multipart/form-data; boundary=" + boundary;
+            webRequest.Method = "POST";
+            webRequest.KeepAlive = true;
+            webRequest.Credentials = CredentialCache.DefaultCredentials;
+            Stream rs = webRequest.GetRequestStream();
+            string formdataTemplate = "Content-Disposition: form-data; name=\"{0}\"\r\n\r\n{1}";
+
+            foreach (string key in nvc.Keys)
+            {
+                rs.Write(boundaryBytes, 0, boundaryBytes.Length);
+                string formitem = string.Format(formdataTemplate, key, nvc[key]);
+                byte[] formitembytes = Encoding.UTF8.GetBytes(formitem);
+                rs.Write(formitembytes, 0, formitembytes.Length);
+            }
+
+            rs.Write(boundaryBytes, 0, boundaryBytes.Length);
+            string headerTemplate = "Content-Disposition: form-data; name=\"{0}\"; filename=\"{1}\"\r\nContent-Type: {2}\r\n\r\n";
+            string header = string.Format(headerTemplate, paramName, file, contentType);
+            byte[] headerBytes = Encoding.UTF8.GetBytes(header);
+            rs.Write(headerBytes, 0, headerBytes.Length);
+            //image file processing
+            Bitmap screen = GetPrintScreen();
+            MemoryStream fileStream = new MemoryStream();
+            screen.Save(fileStream, ImageFormat.Png);
+            fileStream.Position = 0;
+            byte[] buffer = new byte[4096];
+            int bytesRead = 0;
+            //writing the image in to the stream
+            while ((bytesRead = fileStream.Read(buffer, 0, buffer.Length)) != 0)
+            {
+                rs.Write(buffer, 0, buffer.Length);
+            }
+            fileStream.Close();
+
+            byte[] trailer = Encoding.ASCII.GetBytes("\r\n--" + boundary + "--\r\n");
+            rs.Write(trailer, 0, trailer.Length);
+            rs.Close();
+
+            WebResponse wResp = null;
+            try
+            {
+                wResp = webRequest.GetResponse();
+                Stream stream = wResp.GetResponseStream();
+                StreamReader reader = new StreamReader(stream);
+                WriteLog("File" + file + " is uploaded, server request: " + reader.ReadToEnd());
+            }
+            catch (Exception ex)
+            {
+                WriteLog("File upload error: " + ex.Message);
+                if (wResp != null)
+                {
+                    wResp.Close();
+                    wResp = null;
+                }
+                throw;
+            }
+            finally
+            {
+                webRequest = null;
+            }
+
+        }
         private void SendPrintScreen(long chatID)
         {
             string address = baseUrl + token + "/sendPhoto";
             NameValueCollection nvc = new NameValueCollection();
             nvc.Add("chat_id", chatID.ToString());
-            HttpUploadFile(address, "NuGet.png", "photo", "image/png", nvc);
+            //HttpUploadFile(address, "NuGet.png", "photo", "image/png", nvc);
+            HttpUploadScreen(address, ".png", "photo", "image/png", nvc);
+        }
+        private Bitmap GetPrintScreen()
+        {
+            //Bitmap screen = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height);
+            //If scaling in Windows is set to any value other than 100 %,
+            //for some reason the methods stop correctly determining the screen resolution 
+            Bitmap screen = new Bitmap(1920,1080);
+            Graphics gr = Graphics.FromImage(screen as Image);
+            gr.CopyFromScreen(0, 0, 0, 0, screen.Size);
+            return ResizeImg(screen,1280,720);
+        }
+        private Bitmap ResizeImg(Bitmap b,int nWidth, int nHeight)
+        {
+            Bitmap result = new Bitmap(nWidth, nHeight);
+            using (Graphics g = Graphics.FromImage(result as Image))
+            {
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.DrawImage(b, 0, 0, nWidth, nHeight);
+            }
+                return result;
         }
     }
 }
