@@ -112,7 +112,7 @@ All supported commands are listed below:
 /startprocess- starts the selected process";
 
                     break;
-                case " /getlog":
+                case "/getlog":
                     answer = RetLog();
                     break;
                 case "/start":
